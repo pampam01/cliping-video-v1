@@ -4,7 +4,7 @@ from moviepy.editor import VideoFileClip
 from config import OUTPUT_DIR, TEMP_DIR, GEMINI_API_KEY
 from services.youtube_downloader import YouTubeDownloader
 from services.whisper_transcriber import WhisperSingleton
-from services.gemini_selector import GeminiSelector
+from services.ai_selector import AISelector
 from services.face_tracker import FaceTracker
 from services.caption_maker import CaptionMaker
 from utils.helpers import generate_random_clips, cleanup_temp_files
@@ -28,7 +28,7 @@ class VideoProcessor:
         """
         self.downloader = YouTubeDownloader()
         self.transcriber = WhisperSingleton()
-        self.ai_selector = GeminiSelector(api_key=GEMINI_API_KEY)
+        self.ai_selector = AISelector()
         self.face_tracker = FaceTracker()
         self.caption_maker = CaptionMaker(caption_style)
 

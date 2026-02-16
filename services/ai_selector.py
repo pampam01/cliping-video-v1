@@ -1,25 +1,30 @@
 import json
 import random
-import google.generativeai as genai
+import os
+from openai import OpenAI
+from config import OPENROUTER_API_KEY, OPENROUTER_MODEL
 
-class GeminiSelector:
+class AISelector:
     """
-    Uses the Gemini AI model to select the most viral clips from a transcript.
+    Uses the OpenRouter API (OpenAI client) to select the most viral clips from a transcript.
     """
-    def __init__(self, api_key):
+    def __init__(self):
         """
-        Initializes the GeminiSelector with an API key.
-
-        Args:
-            api_key (str): The API key for the Gemini AI model.
+        Initializes the AISelector with OpenRouter configuration.
         """
-        self.api_key = api_key
-        genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        if not OPENROUTER_API_KEY:
+            raise ValueError("OPENROUTER_API_KEY is not set in environment variables.")
+            
+        self.client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=OPENROUTER_API_KEY,
+        )
+        self.model = OPENROUTER_MODEL
+        print(f"🤖 Initialized AI Selector with model: {self.model}")
 
     def select_clips(self, segments, video_duration, n, min_dur, max_dur):
         """
-        Selects the most viral clips from a transcript using the Gemini AI model.
+        Selects the most viral clips from a transcript using the AI model.
 
         Args:
             segments (list): A list of transcript segments with timestamps.
@@ -37,7 +42,9 @@ class GeminiSelector:
         
         transcript_with_timestamps = "\n".join(segments_text)
         
-        prompt = f"""You are an expert at creating viral short-form content like Opus.pro. Analyze this transcript with precise timestamps and select the {n} BEST viral clips.
+        system_prompt = "You are an expert at creating viral short-form content like Opus.pro."
+        
+        user_prompt = f"""Analyze this transcript with precise timestamps and select the {n} BEST viral clips.
 
 CRITICAL RULES:
 1. Each clip MUST start at the EXACT beginning of a sentence/thought and end at the EXACT completion of that sentence/thought
@@ -74,9 +81,19 @@ Return ONLY valid JSON with EXACT timestamps from the transcript:
 }}"""
         
         try:
-            print("🤖 AI analyzing transcript for complete viral thoughts...")
-            response = self.model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-            data = json.loads(response.text)
+            print(f"🤖 AI ({self.model}) analyzing transcript for complete viral thoughts...")
+            
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            
+            response_content = completion.choices[0].message.content
+            data = json.loads(response_content)
             validated_clips = []
             
             for clip_data in data.get('clips', []):
@@ -124,28 +141,56 @@ Return ONLY valid JSON with EXACT timestamps from the transcript:
         clips = []
         used_segments = set()
         
-        for i in range(n):
-            available_segments = [seg for j, seg in enumerate(segments) if j not in used_segments]
-            if not available_segments:
+        # Try to find n clips
+        attempts = 0
+        max_attempts = len(segments) * 2  # Limit attempts to avoid infinite loops
+
+        while len(clips) < n and attempts < max_attempts:
+            attempts += 1
+            
+            # Find a starting segment that hasn't been used
+            available_indices = [i for i in range(len(segments)) if i not in used_segments]
+            if not available_indices:
                 break
                 
-            segment = random.choice(available_segments)
-            seg_idx = segments.index(segment)
-            used_segments.add(seg_idx)
+            start_idx = random.choice(available_indices)
             
-            start = segment['start']
-            duration = min(max_dur, segment['end'] - start)
-            if duration < min_dur and seg_idx + 1 < len(segments):
-                next_seg = segments[seg_idx + 1]
-                duration = min(max_dur, next_seg['end'] - start)
+            current_duration = 0
+            end_idx = start_idx
             
-            clips.append({
-                'start': start,
-                'end': start + duration,
-                'title': f'Fallback clip {i+1}',
-                'virality_score': 50,
-                'hook_type': 'general',
-                'duration': duration
-            })
+            # Extend the clip until we meet min_dur or hit max_dur
+            while end_idx < len(segments):
+                seg = segments[end_idx]
+                if end_idx in used_segments and end_idx != start_idx:
+                     # Stop if we hit a used segment (unless it's the start)
+                    break
+                
+                segment_duration = seg['end'] - seg['start']
+                if current_duration + segment_duration > max_dur:
+                    break
+                
+                current_duration += segment_duration
+                end_idx += 1
+                
+                if current_duration >= min_dur:
+                    break
+            
+            # If we found a valid sequence
+            if current_duration >= min_dur:
+                # Mark segments as used
+                for i in range(start_idx, end_idx):
+                    used_segments.add(i)
+                
+                start_time = segments[start_idx]['start']
+                end_time = segments[end_idx-1]['end']
+                
+                clips.append({
+                    'start': start_time,
+                    'end': end_time,
+                    'title': f'Fallback clip {len(clips)+1}',
+                    'virality_score': 50,
+                    'hook_type': 'general',
+                    'duration': end_time - start_time
+                })
         
         return clips

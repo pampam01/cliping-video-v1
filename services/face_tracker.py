@@ -187,7 +187,7 @@ class FaceTracker:
         self.face_cache = {}
         
         # Use faster cropping with resize_algorithm='fast_bilinear' for better performance
-        cropped_clip = clip.crop(x1=left, width=target_width, resize_algorithm='fast_bilinear')
+        cropped_clip = clip.crop(x1=left, width=target_width)
         print(f"    ✅ Video cropping complete: {target_width}x{height}")
         return cropped_clip
 
