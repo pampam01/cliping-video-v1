@@ -52,6 +52,7 @@ CRITICAL RULES:
 3. Each clip must be {min_dur}-{max_dur} seconds long
 4. Clips cannot overlap and must use the EXACT timestamps provided
 5. Focus on complete viral moments: hooks, revelations, advice, stories, funny moments
+6. IDENTIFY A 3-SECOND HOOK: For each clip, identify the MOST engaging 3-second segment (start, end) to be used as a teaser.
 
 SELECTION CRITERIA (prioritize):
 - Complete engaging stories or thoughts
@@ -75,7 +76,11 @@ Return ONLY valid JSON with EXACT timestamps from the transcript:
       "title": "Complete thought or hook",
       "virality_score": 85,
       "hook_type": "story_reveal",
-      "reason": "Complete engaging story with clear beginning and end"
+      "reason": "Complete engaging story with clear beginning and end",
+      "hook_segment": {{
+        "start": 34.5,
+        "end": 37.5
+      }}
     }}
   ]
 }}"""
@@ -138,7 +143,11 @@ Return ONLY valid JSON with EXACT timestamps from the transcript:
                         'title': title,
                         'virality_score': score,
                         'hook_type': hook_type,
-                        'duration': duration
+                        'duration': duration,
+                        'hook_segment': {
+                            'start': clip_data.get('hook_segment', {}).get('start', start),
+                            'end': clip_data.get('hook_segment', {}).get('end', start + 3)
+                        }
                     })
 
             if not validated_clips:

@@ -7,6 +7,7 @@ from services.whisper_transcriber import WhisperSingleton
 from services.ai_selector import AISelector
 from services.face_tracker import FaceTracker
 from services.caption_maker import CaptionMaker
+from moviepy.editor import VideoFileClip, concatenate_videoclips, vfx
 from utils.helpers import generate_random_clips, cleanup_temp_files
 
 
@@ -31,6 +32,53 @@ class VideoProcessor:
         self.ai_selector = AISelector()
         self.face_tracker = FaceTracker()
         self.caption_maker = CaptionMaker(caption_style)
+
+    def apply_visual_effects(self, clip):
+        """
+        Applies visual effects (Zoom, Saturation, Contrast) to a clip.
+        """
+        # 1. Color Boost (Saturation & Contrast)
+        clip = clip.fx(vfx.colorx, 1.3)  # 30% more saturation
+        clip = clip.fx(vfx.lum_contrast, 0, 0.3)  # 30% more contrast
+
+        # 2. Dynamic Zoom (1.0 -> 1.15 over the clip duration)
+        # Note: resize is computationally expensive, use with care.
+        # Simple center zoom implementation:
+        w, h = clip.size
+        
+        def zoom(get_frame, t):
+            scale = 1 + 0.15 * (t / clip.duration)  # Linear zoom 1.0 to 1.15
+            frame = get_frame(t)
+            
+            # Smart crop: moviepy's resize usually handles this if we just scale up
+            # But we need to crop back to original size (w, h) to keep aspect ratio
+            # This is complex in raw python, relying on moviepy's resize:
+            from PIL import Image
+            img = Image.fromarray(frame)
+            new_size = (int(w * scale), int(h * scale))
+            img = img.resize(new_size, Image.LANCZOS)
+            
+            # Center crop
+            left = (new_size[0] - w) // 2
+            top = (new_size[1] - h) // 2
+            img = img.crop((left, top, left + w, top + h))
+            
+            return np.array(img)
+
+        # Use moviepy's native resize if possible, or custom fl_image?
+        # A simpler approach for the hook is just a static slight zoom to differentiate it
+        # or a simpler resize effect. 
+        # Let's use moviepy's built-in resize with a function, but it might be slow.
+        # Alternative: Just make it slightly larger and center crop to "pop" it out.
+        
+        # Let's go with a static "Pop" zoom (1.1x constant) + Color for reliability first.
+        # Dynamic zoom can be choppy if not done perfectly.
+        
+        clip = clip.resize(1.1) # Zoom in 10%
+        # Center crop back to original resolution
+        clip = clip.crop(x_center=clip.w/2, y_center=clip.h/2, width=w, height=h)
+        
+        return clip
 
     def process_video(self, url, num_clips, min_duration, max_duration):
         """
@@ -77,31 +125,54 @@ class VideoProcessor:
             end = clip_info['end']
             title_text = clip_info.get('title', f'Clip {i}')
             virality_score = clip_info.get('virality_score', 0)
+            
+            # Hook data
+            hook_data = clip_info.get('hook_segment', {})
+            hook_start = hook_data.get('start', start)
+            hook_end = hook_data.get('end', min(start + 3, end))
 
             print(f"\n📹 Clip {i}/{len(clip_specs)}: {title_text}")
             print(f"    ⭐ Virality Score: {virality_score}/100")
             print(f"    ⏱️  Time: {start:.1f}s to {end:.1f}s")
+            print(f"    🎣 Hook: {hook_start:.1f}s to {hook_end:.1f}s")
             print(f"    🎨 Caption Style: {self.caption_maker.styles[self.caption_maker.selected_style]['name']}")
 
             try:
                 with VideoFileClip(str(video_path)) as video:
-                    clip = video.subclip(start, end)
-
-                    print(f"    🎯 Applying intelligent face tracking...")
-                    print(f"    ⏳ Analyzing frames for face detection...")
-                    clip = self.face_tracker.track_and_crop(clip)
-                    print(f"    ✅ Face tracking and cropping complete")
-
+                    # 1. Main Clip
+                    main_clip = video.subclip(start, end)
+                    
+                    # 2. Hook Clip
+                    hook_clip = video.subclip(hook_start, hook_end)
+                    
+                    print(f"    🎯 Applying intelligent face tracking to Main Clip...")
+                    main_clip = self.face_tracker.track_and_crop(main_clip)
+                    
+                    print(f"    🎯 Applying intelligent face tracking to Hook Clip...")
+                    hook_clip = self.face_tracker.track_and_crop(hook_clip)
+                    
+                    # 3. Apply Visual Effects to Hook
+                    print(f"    ✨ Applying visual effects to Hook...")
+                    hook_clip = self.apply_visual_effects(hook_clip)
+                    
+                    # 4. Add Captions
                     if words:
-                        print(f"    📝 Adding word-by-word captions...")
-                        clip = self.caption_maker.add_captions(clip, words, start)
+                        print(f"    📝 Adding captions to Main Clip...")
+                        main_clip = self.caption_maker.add_captions(main_clip, words, start)
+                        
+                        print(f"    📝 Adding captions to Hook Clip...")
+                        hook_clip = self.caption_maker.add_captions(hook_clip, words, hook_start)
+
+                    # 5. Concatenate
+                    print(f"    🔗 Merging Hook + Main Clip...")
+                    final_clip = concatenate_videoclips([hook_clip, main_clip])
 
                     filename = f"clip_{i}_{virality_score}pts_{Path(video_path).stem}.mp4"
                     output_path = OUTPUT_DIR / filename
 
                     print(f"    🎥 Encoding with optimized settings...")
                     print(f"    ⏳ Starting video encoding (this may take a while)...")
-                    clip.write_videofile(
+                    final_clip.write_videofile(
                         str(output_path),
                         codec='libx264',
                         audio_codec='aac',
@@ -122,6 +193,8 @@ class VideoProcessor:
 
             except Exception as e:
                 print(f"    ❌ Error processing clip {i}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
         
         self.face_tracker.close()
