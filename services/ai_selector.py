@@ -51,8 +51,10 @@ CRITICAL RULES:
 2. Never cut off mid-sentence or mid-word - clips must be complete thoughts
 3. Each clip must be {min_dur}-{max_dur} seconds long
 4. Clips cannot overlap and must use the EXACT timestamps provided
-5. Focus on complete viral moments: hooks, revelations, advice, stories, funny moments
-6. IDENTIFY A 3-SECOND HOOK: For each clip, identify the MOST engaging 3-second segment (start, end) to be used as a teaser.
+6. IDENTIFY A HOOK: For each clip, identify the MOST engaging "complete thought" or sentence to be used as a teaser.
+   - It does NOT have to be exactly 3 seconds.
+   - It MUST be a complete sentence or phrase.
+   - It can be shorter or longer than 3s, as long as it packs a punch and feels complete.
 
 SELECTION CRITERIA (prioritize):
 - Complete engaging stories or thoughts

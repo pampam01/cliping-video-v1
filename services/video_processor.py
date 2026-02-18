@@ -151,6 +151,8 @@ class VideoProcessor:
                     print(f"    🎯 Applying intelligent face tracking to Hook Clip...")
                     hook_clip = self.face_tracker.track_and_crop(hook_clip)
                     
+                    width, height = main_clip.size
+                    
                     # 3. Apply Visual Effects to Hook
                     print(f"    ✨ Applying visual effects to Hook...")
                     hook_clip = self.apply_visual_effects(hook_clip)
@@ -163,9 +165,24 @@ class VideoProcessor:
                         print(f"    📝 Adding captions to Hook Clip...")
                         hook_clip = self.caption_maker.add_captions(hook_clip, words, hook_start)
 
-                    # 5. Concatenate
-                    print(f"    🔗 Merging Hook + Main Clip...")
-                    final_clip = concatenate_videoclips([hook_clip, main_clip])
+                    # 5. Transition Clip
+                    transition_path = Path("asset/transisi.mp4")
+                    clips_to_concat = [hook_clip]
+                    
+                    if transition_path.exists():
+                        print(f"    🔄 Inserting transition video...")
+                        transition_clip = VideoFileClip(str(transition_path))
+                        # Resize transition to match main clip
+                        transition_clip = transition_clip.resize(newsize=(width, height))
+                        clips_to_concat.append(transition_clip)
+                    else:
+                        print(f"    ⚠️ Transition video not found at {transition_path}, skipping.")
+
+                    clips_to_concat.append(main_clip)
+
+                    # 6. Concatenate
+                    print(f"    🔗 Merging Hook + Transition + Main Clip...")
+                    final_clip = concatenate_videoclips(clips_to_concat, method="compose")
 
                     filename = f"clip_{i}_{virality_score}pts_{Path(video_path).stem}.mp4"
                     output_path = OUTPUT_DIR / filename
