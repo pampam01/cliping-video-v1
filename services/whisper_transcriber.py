@@ -1,7 +1,7 @@
 from faster_whisper import WhisperModel
 import torch
 import os
-from config import WHISPER_MODEL
+from config import WHISPER_MODEL, WHISPER_LANGUAGE
 
 class WhisperSingleton:
     """
@@ -73,7 +73,7 @@ class WhisperSingleton:
                 word_timestamps=True,
                 vad_filter=True,  # Voice activity detection to skip silence
                 vad_parameters={"min_silence_duration_ms": 500},  # Adjust silence detection
-                language="en",
+                language=WHISPER_LANGUAGE,
                 beam_size=1,  # Reduce beam size for faster processing
                 best_of=1,    # Only keep the best result
                 temperature=0  # Disable sampling for deterministic results

@@ -32,20 +32,24 @@ class CaptionMaker:
         """
         font_collections = {
             'bold': [
+                'C:/Windows/Fonts/impact.ttf',
+                'C:/Windows/Fonts/ariblk.ttf',
+                'C:/Windows/Fonts/arialbd.ttf',
+                'C:/Windows/Fonts/calibrib.ttf',
+                'C:/Windows/Fonts/verdanab.ttf',
                 '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
                 '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
                 '/System/Library/Fonts/Helvetica.ttc',
                 '/System/Library/Fonts/Arial.ttf',
-                '/Windows/Fonts/arialbd.ttf',
-                '/Windows/Fonts/calibrib.ttf',
                 '/usr/share/fonts/TTF/DejaVuSans-Bold.ttf'
             ],
             'regular': [
+                'C:/Windows/Fonts/arial.ttf',
+                'C:/Windows/Fonts/calibri.ttf',
+                'C:/Windows/Fonts/verdana.ttf',
                 '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
                 '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
                 '/System/Library/Fonts/Helvetica.ttc',
-                '/Windows/Fonts/arial.ttf',
-                '/Windows/Fonts/calibri.ttf',
                 '/usr/share/fonts/TTF/DejaVuSans.ttf'
             ]
         }
@@ -84,48 +88,101 @@ class CaptionMaker:
         except:
             return ImageFont.load_default()
 
-    def create_word_image(self, word, video_size, font_size, is_highlighted=False):
+    def create_word_image(self, word, video_size, base_font_size, is_highlighted=False):
         """
-        Creates an image of a single word.
-
-        Args:
-            word (str): The word to create an image of.
-            video_size (tuple): The size of the video (width, height).
-            font_size (int): The size of the font.
-            is_highlighted (bool, optional): Whether the word should be
-                                             highlighted. Defaults to False.
-
-        Returns:
-            numpy.ndarray: A numpy array representing the image.
+        Creates an image of a single word with advanced styling (stroke, shadow, etc.).
         """
         width, height = video_size
 
+        # Get style configuration
         style_config = self.styles.get(self.selected_style, self.styles['clean_white'])
+        
+        # 1. Handle Uppercase
+        if style_config.get('uppercase', False):
+            word = word.upper()
+
+        # 2. Handle Font Scaling
+        # Default scale is 1.0 if not specified
+        font_scale = style_config.get('font_scale', 1.0)
+        final_font_size = int(base_font_size * font_scale)
+        
         font_type = style_config['font_type']
+        font = self.get_font(font_type, final_font_size)
 
-        font = self.get_font(font_type, font_size)
-
+        # Create image with transparent background
         img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
+        # Calculate text position
         temp_bbox = draw.textbbox((0, 0), word, font=font)
         text_width = temp_bbox[2] - temp_bbox[0]
         text_height = temp_bbox[3] - temp_bbox[1]
 
         x = (width - text_width) // 2
-
+        
+        # Position logic
         safe_bottom_margin = int(height * 0.15)
         y = height - text_height - safe_bottom_margin
+        
+        # Ensure it doesn't go too high (keep it in lower third roughly, but adjustable)
+        # Viral captions often sit a bit higher than standard subtitles to avoid UI elements
+        # Let's align slightly above bottom third
+        if y < height * 0.6: 
+             y = int(height * 0.6)
 
-        if y < height * 0.7:
-            y = int(height * 0.7)
+        # 3. Handle Background Color (e.g. for 'Bold Black BG' style)
+        bg_color = style_config.get('bg_color')
+        if bg_color:
+            padding = 10
+            bg_bbox = [
+                x - padding, 
+                y - padding, 
+                x + text_width + padding, 
+                y + text_height + padding
+            ]
+            draw.rectangle(bg_bbox, fill=bg_color)
 
+        # 4. Handle Shadow
+        shadow_offset = style_config.get('shadow_offset', (0, 0))
+        shadow_color = style_config.get('shadow_color')
+        
+        if shadow_color and (shadow_offset[0] != 0 or shadow_offset[1] != 0):
+            # Draw shadow multiple times for softer/thicker look if needed, 
+            # but simple offset is usually enough for "hard" viral shadows
+            draw.text(
+                (x + shadow_offset[0], y + shadow_offset[1]), 
+                word, 
+                font=font, 
+                fill=shadow_color
+            )
+
+        # 5. Handle Stroke (Outline)
+        stroke_width = style_config.get('stroke_width', 0)
+        stroke_color = style_config.get('stroke_color')
+        
         if is_highlighted:
-            text_color = (255, 255, 0, 255)
+             # Highlight override: Bright Yellow Text, Black Stroke usually
+             text_color = (255, 255, 0, 255)
+             # Ensure visible stroke for highlighted text if not already set high
+             if stroke_width < 2:
+                 stroke_width = 4
+                 stroke_color = (0, 0, 0, 255)
         else:
-            text_color = style_config['text_color']
+             text_color = style_config['text_color']
 
-        draw.text((x, y), word, font=font, fill=text_color)
+        # Draw text with stroke if customized
+        if stroke_width > 0 and stroke_color:
+             draw.text(
+                (x, y), 
+                word, 
+                font=font, 
+                fill=text_color, 
+                stroke_width=stroke_width, 
+                stroke_fill=stroke_color
+            )
+        else:
+            # Standard draw without stroke
+            draw.text((x, y), word, font=font, fill=text_color)
 
         return np.array(img)
 

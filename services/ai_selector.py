@@ -83,17 +83,35 @@ Return ONLY valid JSON with EXACT timestamps from the transcript:
         try:
             print(f"🤖 AI ({self.model}) analyzing transcript for complete viral thoughts...")
             
+            # Remove response_format={"type": "json_object"} as many free/other models don't support it
             completion = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
-                ],
-                response_format={"type": "json_object"}
+                ]
             )
             
             response_content = completion.choices[0].message.content
-            data = json.loads(response_content)
+            
+            # Clean up potential markdown code blocks
+            if "```json" in response_content:
+                response_content = response_content.split("```json")[1].split("```")[0].strip()
+            elif "```" in response_content:
+                response_content = response_content.split("```")[1].split("```")[0].strip()
+                
+            try:
+                data = json.loads(response_content)
+            except json.JSONDecodeError:
+                # Last resort: try to find start and end of JSON list/object
+                start_bracket = response_content.find('{')
+                end_bracket = response_content.rfind('}')
+                if start_bracket != -1 and end_bracket != -1:
+                    clean_json = response_content[start_bracket:end_bracket+1]
+                    data = json.loads(clean_json)
+                else:
+                    raise
+            
             validated_clips = []
             
             for clip_data in data.get('clips', []):
