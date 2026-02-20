@@ -15,7 +15,7 @@ class FaceTracker:
         # Use model_selection=0 (short-range) for better performance
         # Increase min_detection_confidence to reduce false positives
         self.face_detection = self.mp_face_detection.FaceDetection(
-            model_selection=0, min_detection_confidence=0.5
+            model_selection=0, min_detection_confidence=0.4
         )
         # Cache for detected faces to avoid reprocessing
         self.face_cache = {}
@@ -109,87 +109,162 @@ class FaceTracker:
 
     def track_and_crop(self, clip):
         """
-        Tracks faces in a video clip and crops it to keep the speaker centered.
+        Dynamically tracks faces. If a face is found, crops to 9:16 centered on face.
+        If no face is found, shows the full video frame (letterboxed/scaled to fit width).
 
         Args:
             clip (moviepy.editor.VideoFileClip): The video clip to process.
 
         Returns:
-            moviepy.editor.VideoFileClip: The cropped video clip.
+            moviepy.editor.VideoFileClip: The processed video clip.
         """
-        width, height = clip.size
-        target_width = int(height * 9 / 16)
-        if target_width % 2 != 0:
-            target_width -= 1
-        if width <= target_width:
-            print("    ⏩ Skipping face tracking - video already in target aspect ratio")
-            return clip
-
-        print("    🎯 Analyzing frames for optimal face tracking (optimized)...")
-
-        # Clear cache for new clip
-        self.face_cache = {}
+        w_video, h_video = clip.size
         
-        face_positions = []
-        # Analyze fewer frames for better performance
-        # For short clips (<10s), analyze 6 frames, for longer clips analyze up to 8 frames
-        num_samples = min(6, max(3, int(clip.duration / 3)))
-        if clip.duration > 10:
-            num_samples = min(8, max(6, int(clip.duration / 4)))
+        # Target dimensions (9:16)
+        # We want the output to have the height of the original video (or scaled up?)
+        # Let's keep original height as reference, so output width is h_video * 9/16
+        w_target = int(h_video * 9 / 16)
+        if w_target % 2 != 0: w_target -= 1
         
-        print(f"    ⏳ Analyzing {num_samples} frames across {clip.duration:.1f}s of video...")
-            
-        sample_times = np.linspace(0, clip.duration, num_samples)
+        print(f"    🎯 Analyzing video for dynamic face tracking (Target: {w_target}x{h_video})...")
 
-        for i, t in enumerate(sample_times):
+        # 1. Analyze frames at 2 FPS to build a "face map"
+        # We need a dense map to switch modes responsively
+        fps_analyze = 2
+        duration = clip.duration
+        timestamps = np.arange(0, duration, 1.0 / fps_analyze)
+        
+        face_map = [] # [(time, center_x), ...] or None if no face
+        
+        print(f"    ⏳ Scanning {len(timestamps)} frames...")
+        
+        for i, t in enumerate(timestamps):
             try:
-                print(f"    ⏳ Processing frame {i+1}/{num_samples} at {t:.2f}s...")
                 frame = clip.get_frame(t)
                 faces = self.detect_faces_in_frame(frame, frame_time=t)
-
+                
                 if faces:
+                    # Found a face
                     best_face = faces[0]
-                    face_positions.append(best_face['center_x'])
-                    print(f"    ✅ Frame {i+1}: Found face at position {best_face['center_x']} with confidence {best_face['confidence']:.2f}")
+                    face_map.append({'time': t, 'center_x': best_face['center_x'], 'has_face': True})
                 else:
-                    if face_positions:
-                        face_positions.append(face_positions[-1])
-                    else:
-                        face_positions.append(width // 2)
-                    print(f"    ⚠️ Frame {i+1}: No faces detected, using fallback position")
-
+                    # No face
+                    face_map.append({'time': t, 'center_x': w_video // 2, 'has_face': False})
+                    
             except Exception as e:
-                print(f"    ⚠️ Error processing frame {i+1} at {t:.2f}s: {e}")
-                if face_positions:
-                    face_positions.append(face_positions[-1])
-                else:
-                    face_positions.append(width // 2)
+                print(f"    ⚠️ Error scanning frame at {t:.2f}s: {e}")
+                face_map.append({'time': t, 'center_x': w_video // 2, 'has_face': False})
 
-        if face_positions:
-            print("    ⏳ Calculating optimal tracking trajectory...")
-            positions = [(pos, height // 2) for pos in face_positions]
-            # Use a smaller window size for smoother tracking
-            smoothed_positions = self.smooth_trajectory(positions, window_size=3)
-            # Use median for more stable center position
-            center_x = int(np.median([pos[0] for pos in smoothed_positions]))
-            print(f"    ✅ Face tracking complete, optimal center: {center_x}")
-        else:
-            center_x = width // 2
-            print("    ⚠️  No faces detected, using center crop")
+        # 2. Gap Filling / Stabilization
+        # If we have Face -> No Face -> Face within a short window (e.g., 1.0s), 
+        # assume the face was there but missed.
+        
+        gap_fill_window = 1.0  # seconds
+        print(f"    🛠️ Stabilizing tracking (Filling gaps < {gap_fill_window}s)...")
+        
+        for i in range(len(face_map)):
+            if not face_map[i]['has_face']:
+                # Look back: was there a face recently?
+                prev_face_idx = -1
+                for j in range(i - 1, -1, -1):
+                    if face_map[j]['has_face']:
+                        prev_face_idx = j
+                        break
+                    if (face_map[i]['time'] - face_map[j]['time']) > gap_fill_window:
+                        break
+                
+                # Look forward: will there be a face soon?
+                next_face_idx = -1
+                for j in range(i + 1, len(face_map)):
+                    if face_map[j]['has_face']:
+                        next_face_idx = j
+                        break
+                    if (face_map[j]['time'] - face_map[i]['time']) > gap_fill_window:
+                        break
+                
+                # If surrounded by faces within window, fill the gap
+                if prev_face_idx != -1 and next_face_idx != -1:
+                    # Interpolate center_x
+                    t1 = face_map[prev_face_idx]['time']
+                    x1 = face_map[prev_face_idx]['center_x']
+                    t2 = face_map[next_face_idx]['time']
+                    x2 = face_map[next_face_idx]['center_x']
+                    t_curr = face_map[i]['time']
+                    
+                    # Linear interpolation
+                    ratio = (t_curr - t1) / (t2 - t1)
+                    interp_x = int(x1 + ratio * (x2 - x1))
+                    
+                    face_map[i]['has_face'] = True
+                    face_map[i]['center_x'] = interp_x
+                    # print(f"    🔧 Filled gap at {t_curr:.2f}s")
+        
+        # 3. Smooth the face positions and state
+        # We want to avoid jittery switching. 
+        # For simplicity, we'll just look up the closest analyzed frame during rendering.
+        
+        print("    ✅ Analysis complete. Generating dynamic crop...")
 
-        # Ensure the crop area stays within the video boundaries
-        center_x = max(target_width // 2, min(width - target_width // 2, center_x))
-        left = center_x - target_width // 2
-        
-        print(f"    ⏳ Cropping video to {target_width}x{height} (9:16 ratio) at x-position: {left}")
-        
-        # Clear cache to free memory
-        self.face_cache = {}
-        
-        # Use faster cropping with resize_algorithm='fast_bilinear' for better performance
-        cropped_clip = clip.crop(x1=left, width=target_width)
-        print(f"    ✅ Video cropping complete: {target_width}x{height}")
-        return cropped_clip
+        def get_face_state(t):
+            # Find closest timestamp in face_map
+            # Since timestamps are sorted, we can use binary search or just simple index calc
+            idx = int(t * fps_analyze)
+            if idx >= len(face_map): idx = len(face_map) - 1
+            if idx < 0: idx = 0
+            return face_map[idx]
+
+        def process_frame(get_frame, t):
+            frame = get_frame(t) # Original frame (H, W, 3)
+            img_h, img_w, _ = frame.shape
+            
+            state = get_face_state(t)
+            
+            if state['has_face']:
+                # === FACE MODE: Crop 9:16 Centered on Face ===
+                center_x = state['center_x']
+                
+                # Ensure crop is within bounds
+                left = center_x - (w_target // 2)
+                if left < 0: left = 0
+                if left + w_target > img_w: left = img_w - w_target
+                
+                # Crop
+                # Note: numpy cropping is y:y+h, x:x+w
+                crop = frame[:, left:left+w_target]
+                return crop
+            
+            else:
+                # === NO FACE MODE: Show Full Width (Zoom Out) ===
+                # We want to show the full width of the video, fitting into the 9:16 target.
+                # Since source is usually 16:9 (Landscape) and target is 9:16 (Portrait),
+                # "Fitting" the width means shrinking the video to fit inside w_target.
+                # But that leaves huge black bars top/bottom.
+                
+                # Logic:
+                # 1. Resize original frame so its width == w_target
+                # 2. This makes height = img_h * (w_target / img_w)
+                # 3. Paste this resized image into a black canvas of size (w_target, img_h)
+                
+                scale = w_target / img_w
+                new_h = int(img_h * scale)
+                
+                # Resize using OpenCV (faster than PIL for per-frame)
+                # Ensure frame is uint8 for cv2
+                if frame.dtype != np.uint8:
+                    frame = frame.astype(np.uint8)
+                
+                resized = cv2.resize(frame, (w_target, new_h))
+                
+                # Create black canvas
+                canvas = np.zeros((img_h, w_target, 3), dtype=np.uint8)
+                
+                # Center vertically
+                y_offset = (img_h - new_h) // 2
+                
+                canvas[y_offset:y_offset+new_h, :] = resized
+                return canvas
+
+        return clip.fl(process_frame)
 
     def close(self):
         """Releases resources used by the face detector."""

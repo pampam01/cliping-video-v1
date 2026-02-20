@@ -139,8 +139,24 @@ class VideoProcessor:
 
             try:
                 with VideoFileClip(str(video_path)) as video:
+                    # Check for hook overlap
+                    main_start = start
+                    if abs(hook_start - start) < 1.0:
+                        print(f"    ✂️ Hook overlaps with start, trimming main clip start to {hook_end:.1f}s")
+                        main_start = hook_end
+
                     # 1. Main Clip
-                    main_clip = video.subclip(start, end)
+                    # Ensure main_start is not beyond end
+                    if main_start >= end:
+                        print(f"    ⚠️ Main clip trimmed entirely (Hook covers all). Setting min length.")
+                        main_start = max(start, end - 5.0) # Fallback to last 5s? Or just keep original?
+                        # Actually if hook covers all, maybe we just want the hook? 
+                        # But user wants [Hook] -> [Transition] -> [Main]. 
+                        # If Main is same as Hook, then we have [Hook] -> [Transition] -> [Hook] (redundant).
+                        # Let's assume if it overlaps completely, we just show the hook and maybe a bit more if possible.
+                        # For now, let's just ensure main_start < end.
+                    
+                    main_clip = video.subclip(main_start, end)
                     
                     # 2. Hook Clip
                     hook_clip = video.subclip(hook_start, hook_end)
@@ -160,7 +176,7 @@ class VideoProcessor:
                     # 4. Add Captions
                     if words:
                         print(f"    📝 Adding captions to Main Clip...")
-                        main_clip = self.caption_maker.add_captions(main_clip, words, start)
+                        main_clip = self.caption_maker.add_captions(main_clip, words, main_start)
                         
                         print(f"    📝 Adding captions to Hook Clip...")
                         hook_clip = self.caption_maker.add_captions(hook_clip, words, hook_start)
