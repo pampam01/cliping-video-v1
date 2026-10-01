@@ -8,8 +8,11 @@ from services.video_processor import VideoProcessor
 from styles.caption_styles import CAPTION_STYLES
 from config import OUTPUT_DIR, TEMP_DIR
 
-# Ensure output is not buffered
-sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
+# Ensure output is UTF-8 encoded and not buffered on Windows
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
 
 # Function to print with immediate flush
 def log(message):

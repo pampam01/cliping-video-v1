@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Viral Clipper</title>
+  <style>
+    :root {
+      --bg: #f7f3ea;
+      --panel: rgba(255, 252, 245, 0.82);
+      --text: #1b1d1f;
+      --muted: #575f66;
+      --accent: #d4552d;
+      --accent-dark: #8f2d14;
+      --line: rgba(27, 29, 31, 0.12);
+      --shadow: 0 24px 60px rgba(56, 37, 27, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(212, 85, 45, 0.18), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(29, 120, 98, 0.18), transparent 28%),
+        linear-gradient(135deg, #f9f6ef 0%, #efe2cd 100%);
+      display: grid;
+      place-items: center;
+      padding: 32px;
+    }
+
+    .card {
+      width: min(960px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      overflow: hidden;
+    }
+
+    .content {
+      display: grid;
+      gap: 28px;
+      padding: 48px;
+    }
+
+    .eyebrow {
+      margin: 0;
+      font-size: 0.9rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent-dark);
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 12ch;
+      font-size: clamp(2.8rem, 7vw, 5.4rem);
+      line-height: 0.95;
+    }
+
+    .lead {
+      margin: 0;
+      max-width: 56ch;
+      font-size: 1.08rem;
+      line-height: 1.7;
+      color: var(--muted);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+
+    .button,
+    .ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 22px;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 700;
+      transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    }
+
+    .button {
+      color: #fff7f1;
+      background: linear-gradient(135deg, var(--accent) 0%, #ef7e38 100%);
+      box-shadow: 0 14px 30px rgba(212, 85, 45, 0.28);
+    }
+
+    .ghost {
+      color: var(--text);
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.56);
+    }
+
+    .button:hover,
+    .ghost:hover {
+      transform: translateY(-2px);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .feature {
+      padding: 20px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid rgba(27, 29, 31, 0.08);
+    }
+
+    .feature h2 {
+      margin: 0 0 10px;
+      font-size: 1.05rem;
+    }
+
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    @media (max-width: 760px) {
+      .content {
+        padding: 28px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <section class="content">
+      <p class="eyebrow">AI Short Video Workflow</p>
+      <h1>YouTube Viral Clipper</h1>
+      <p class="lead">
+        Turn long YouTube videos into tighter, punchier short clips with automated selection,
+        captions, and framing support. This page is a simple root entry point for the project.
+      </p>
+
+      <div class="actions">
+        <a class="button" href="./README.md">Open Project Guide</a>
+        <a class="ghost" href="./clips/">View Clips Folder</a>
+      </div>
+
+      <div class="grid">
+        <article class="feature">
+          <h2>Smart Clip Picking</h2>
+          <p>Focus on moments with stronger viral potential so the editing flow starts faster.</p>
+        </article>
+        <article class="feature">
+          <h2>Caption Ready</h2>
+          <p>Support for caption generation helps make each exported clip easier to watch.</p>
+        </article>
+        <article class="feature">
+          <h2>Built for Iteration</h2>
+          <p>A clean starter page in the repo root gives you a simple front door for future UI work.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
